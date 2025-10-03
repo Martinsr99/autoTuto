@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n_video_pipeline
+    restart: unless-stopped
+    platform: linux/amd64  # Cambiar a linux/arm64 en Raspberry Pi
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=${N8N_USER}
+      - N8N_BASIC_AUTH_PASSWORD=${N8N_PASSWORD}
+      - N8N_HOST=${N8N_HOST}
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - NODE_ENV=production
+      - WEBHOOK_URL=${WEBHOOK_URL}
+      - GENERIC_TIMEZONE=${TIMEZONE}
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./n8n:/n8n-workflows
+      - ./scripts:/scripts
+      - ./templates:/templates
+      - ./output:/output
+      - ./temp:/temp
+    networks:
+      - video_pipeline_network
+    depends_on:
+      - ffmpeg-processor
+
+  ffmpeg-processor:
+    build:
+      context: ./ffmpeg
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: ffmpeg_processor
+    restart: unless-stopped
+    environment:
+      - TIMEZONE=${TIMEZONE}
+    volumes:
+      - ./templates:/templates
+      - ./output:/output
+      - ./temp:/temp
+    networks:
+      - video_pipeline_network
+
+  node-scripts:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile
+      platforms:
+        - linux/amd64
+        - linux/arm64
+    container_name: node_scripts
+    restart: unless-stopped
+    environment:
+      - YOUTUBE_CLIENT_ID=${YOUTUBE_CLIENT_ID}
+      - YOUTUBE_CLIENT_SECRET=${YOUTUBE_CLIENT_SECRET}
+      - YOUTUBE_REFRESH_TOKEN=${YOUTUBE_REFRESH_TOKEN}
+      - TIKTOK_CLIENT_KEY=${TIKTOK_CLIENT_KEY}
+      - TIKTOK_CLIENT_SECRET=${TIKTOK_CLIENT_SECRET}
+      - TIKTOK_ACCESS_TOKEN=${TIKTOK_ACCESS_TOKEN}
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID}
+    volumes:
+      - ./output:/output
+      - ./temp:/temp
+      - ./templates:/templates
+    networks:
+      - video_pipeline_network
+
+networks:
+  video_pipeline_network:
+    driver: bridge
+
+volumes:
+  n8n_data:
+    driver: local

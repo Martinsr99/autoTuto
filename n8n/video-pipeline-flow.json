@@ -1,0 +1,290 @@
+{
+  "name": "Video Publishing Pipeline",
+  "nodes": [
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "list",
+        "driveId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DRIVE_FOLDER_ID }}",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "={{ $env.GOOGLE_DRIVE_FOLDER_ID }}",
+          "mode": "id"
+        }
+      },
+      "id": "1",
+      "name": "Google Drive Trigger",
+      "type": "n8n-nodes-base.googleDriveTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "1",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.name }}",
+              "operation": "endsWith",
+              "value2": ".mp4"
+            }
+          ]
+        }
+      },
+      "id": "2",
+      "name": "Filter MP4 Files",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.id }}",
+          "mode": "id"
+        },
+        "options": {
+          "googleFileConversion": {
+            "conversion": {
+              "doNotConvert": true
+            }
+          }
+        }
+      },
+      "id": "3",
+      "name": "Download Video",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [650, 300],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "1",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Extract video metadata\nconst fileName = $input.item.json.name;\nconst videoName = fileName.replace('.mp4', '');\nconst fileId = $input.item.json.id;\n\n// Generate output paths\nconst tempPath = `/temp/${videoName}.mp4`;\nconst outputDir = '/output';\nconst metadataPath = `/templates/metadata.json`;\n\nreturn {\n  videoName,\n  fileName,\n  fileId,\n  tempPath,\n  outputDir,\n  metadataPath,\n  processedAt: new Date().toISOString()\n};"
+      },
+      "id": "4",
+      "name": "Prepare Metadata",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [850, 300]
+    },
+    {
+      "parameters": {
+        "command": "=docker exec ffmpeg_processor /scripts/process-video.sh \"{{ $json.tempPath }}\" \"{{ $json.outputDir }}\" \"{{ $json.videoName }}\""
+      },
+      "id": "5",
+      "name": "Process Video (FFmpeg)",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "command": "=docker exec node_scripts ts-node /app/uploader-youtube.ts \"/output/{{ $json.videoName }}_youtube.mp4\" \"{{ $json.metadataPath }}\""
+      },
+      "id": "6",
+      "name": "Upload to YouTube",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1250, 200]
+    },
+    {
+      "parameters": {
+        "command": "=docker exec node_scripts ts-node /app/uploader-tiktok.ts \"/output/{{ $json.videoName }}_tiktok.mp4\" \"{{ $json.metadataPath }}\""
+      },
+      "id": "7",
+      "name": "Upload to TikTok",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate results from both uploads\nconst items = $input.all();\nconst youtubeResult = items[0]?.json || {};\nconst tiktokResult = items[1]?.json || {};\n\nreturn {\n  success: true,\n  videoName: $('Prepare Metadata').item.json.videoName,\n  youtube: {\n    output: youtubeResult.stdout || '',\n    error: youtubeResult.stderr || ''\n  },\n  tiktok: {\n    output: tiktokResult.stdout || '',\n    error: tiktokResult.stderr || ''\n  },\n  processedAt: new Date().toISOString()\n};"
+      },
+      "id": "8",
+      "name": "Aggregate Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "content": "=🎬 **Video Publishing Complete**\n\n**Video:** {{ $('Prepare Metadata').item.json.videoName }}\n**Processed:** {{ $json.processedAt }}\n\n**YouTube:**\n```\n{{ $json.youtube.output }}\n```\n\n**TikTok:**\n```\n{{ $json.tiktok.output }}\n```",
+        "options": {}
+      },
+      "id": "9",
+      "name": "Send Discord Notification",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 1,
+      "position": [1650, 250],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "2",
+          "name": "Discord Webhook"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🎬 *Video Publishing Complete*\\n\\n*Video:* {{ $('Prepare Metadata').item.json.videoName }}\\n*Processed:* {{ $json.processedAt }}\\n\\n*Status:* ✅ Success",
+        "additionalFields": {
+          "parse_mode": "Markdown"
+        }
+      },
+      "id": "10",
+      "name": "Send Telegram Notification",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1,
+      "position": [1650, 350],
+      "credentials": {
+        "telegramApi": {
+          "id": "3",
+          "name": "Telegram Bot"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "content": "=❌ **Video Processing Failed**\n\n**Video:** {{ $json.videoName || 'Unknown' }}\n**Error:** {{ $json.error || $json.stderr || 'Unknown error' }}\n**Time:** {{ new Date().toISOString() }}",
+        "options": {}
+      },
+      "id": "11",
+      "name": "Error Notification",
+      "type": "n8n-nodes-base.discord",
+      "typeVersion": 1,
+      "position": [1050, 500],
+      "credentials": {
+        "discordWebhookApi": {
+          "id": "2",
+          "name": "Discord Webhook"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Google Drive Trigger": {
+      "main": [
+        [
+          {
+            "node": "Filter MP4 Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filter MP4 Files": {
+      "main": [
+        [
+          {
+            "node": "Download Video",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Video": {
+      "main": [
+        [
+          {
+            "node": "Prepare Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Metadata": {
+      "main": [
+        [
+          {
+            "node": "Process Video (FFmpeg)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Video (FFmpeg)": {
+      "main": [
+        [
+          {
+            "node": "Upload to YouTube",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Upload to TikTok",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to YouTube": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload to TikTok": {
+      "main": [
+        [
+          {
+            "node": "Aggregate Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate Results": {
+      "main": [
+        [
+          {
+            "node": "Send Discord Notification",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send Telegram Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [],
+  "triggerCount": 1,
+  "updatedAt": "2025-01-03T10:00:00.000Z",
+  "versionId": "1"
+}

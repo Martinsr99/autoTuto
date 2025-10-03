@@ -1,0 +1,61 @@
+# Environment variables (contienen credenciales sensibles)
+.env
+secrets/
+
+# Archivos temporales
+temp/
+*.tmp
+*.log
+
+# Archivos de salida generados
+output/
+*.mp4
+*.mov
+*.avi
+*.mkv
+
+# Node modules
+node_modules/
+scripts/node_modules/
+scripts/dist/
+
+# n8n data
+n8n_data/
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Archivos de backup
+*.bak
+*.backup
+backup-*.tar.gz
+
+# Plantillas personales de usuario (los usuarios deben crear las suyas)
+templates/intro.mp4
+templates/outro.mp4
+templates/thumbnail.jpg
+templates/thumbnail.png
+
+# Mantener estructura de carpetas pero no el contenido
+!templates/.gitkeep
+!output/.gitkeep
+!temp/.gitkeep
